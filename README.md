@@ -3,7 +3,7 @@ The Raspberry PI IP address scanner
 
 ##Introduction
 In the night of January 24th of 2015, I was attending the Microsoft #Zone61 IoT hackathon in Paris, exited to spend sometime hacking my Raspberry PI. I plugged it, launched Putty and... I was unable to type the IP address of my little headless machine, lost among dozens of machine on the network. I needed a simple way to spot it so I wrote this little utility in C# than scan all the machines on the same network, and list those that looks like a Raspberry PI.
-![Screen shot](img/screenshot.jpg)
+![Screen shot](/img/screenshot.jpg)
 
 ##How to use it?
 - Open a Windows Command Prompt
