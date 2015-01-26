@@ -12,6 +12,7 @@ In the night of January 24th of 2015, I was attending the Microsoft #Zone61 IoT 
 
 ##What's new?
 1.0 Initial release
+1.1 Scanning is now multi-threaded. A lot faster now.
 
 ##Q&A
 #### Q: What are the validated platforms?
