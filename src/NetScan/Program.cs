@@ -2,13 +2,15 @@
 using System.Linq;
 using System.Net;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace NetScan
 {
     class Program
     {
-        private static bool cancel = false;
         private static bool onlyPI = false;
+        private static CancellationTokenSource cts = new CancellationTokenSource();
         static void Main(string[] args)
         {
             Console.CancelKeyPress += Console_CancelKeyPress;
@@ -47,7 +49,7 @@ namespace NetScan
         }
         static void Console_CancelKeyPress(object sender, ConsoleCancelEventArgs e)
         {
-            cancel = true;
+            cts.Cancel();
         }
         static void Scan(IPAddress paramIP = null, bool all = true)
         {
@@ -63,15 +65,26 @@ namespace NetScan
 #if DEBUG
             Console.WriteLine(string.Format("Number of IPs={0}, NetworkAddress={1}, Broardcast={2}", segment.NumberOfIPs, segment.NetworkAddress, segment.BroadcastAddress));
 #endif
-            foreach (var ip in segment.Hosts())
+            ParallelOptions po = new ParallelOptions();
+            po.CancellationToken = cts.Token;
+            po.MaxDegreeOfParallelism = System.Environment.ProcessorCount;
+            try
             {
-                if (cancel)
-                    break;
+                Parallel.ForEach<IPAddress>(segment.Hosts(), po, (ip) =>
+            {
                 var mac = ip.GetMac();
                 //All Raspberry PI MAC address start with the same prefix
                 var spotted = mac.ToString().ToUpper().StartsWith("B8:27:EB");
                 if ((onlyPI && spotted) || !onlyPI)
                     Console.WriteLine(string.Format("IP={0} MAC={1}{2}", ip, mac, spotted ? " <- Raspberry PI spotted !!!" : ""));
+                po.CancellationToken.ThrowIfCancellationRequested();
+            });
+            }
+            catch (OperationCanceledException e)
+            {
+#if DEBUG
+                Console.WriteLine(e.Message);
+#endif
             }
         }
     }
