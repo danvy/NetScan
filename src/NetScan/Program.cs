@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Reflection;
@@ -38,54 +39,25 @@ namespace NetScan
                     IPAddress paramIP;
                     if (IPAddress.TryParse(args[i], out paramIP))
                     {
-                        Scan(paramIP);
+                        IPAddressHelper.ScanMac(ScanOutput, cts.Token, paramIP);
                     }
                 }
             }
-            Scan();
+            IPAddressHelper.ScanMac(ScanOutput, cts.Token);
 #if DEBUG
             Console.ReadKey(false);
 #endif
         }
+        static void ScanOutput(IPAddress ip, string mac)
+        {
+            //All Raspberry PI MAC address start with the same prefix
+            var spotted = mac.ToString().ToUpper().StartsWith("B8:27:EB");
+            if ((onlyPI && spotted) || !onlyPI)
+                Console.WriteLine(string.Format("IP={0} MAC={1}{2}", ip, mac, spotted ? " <- Raspberry PI spotted !!!" : ""));
+        }
         static void Console_CancelKeyPress(object sender, ConsoleCancelEventArgs e)
         {
             cts.Cancel();
-        }
-        static void Scan(IPAddress paramIP = null, bool all = true)
-        {
-            var localIP = paramIP ?? IPAddressHelper.GetLocalIP();
-            if (localIP == null)
-                throw new Exception(string.Format("Can't find network adapter for IP {0}", paramIP));
-            var localMask = localIP.GetSubnetMask();
-            if (localMask == null)
-                throw new Exception(string.Format("Can't find subnet mask for IP {0}", localIP));
-            var localMac = localIP.GetMac();
-            Console.WriteLine(string.Format("Local IP={0}, Mask={1}, Mac={2}", localIP.ToString(), localMask.ToString(), localMac));
-            var segment = new IPSegment(localIP, localMask);
-#if DEBUG
-            Console.WriteLine(string.Format("Number of IPs={0}, NetworkAddress={1}, Broardcast={2}", segment.NumberOfIPs, segment.NetworkAddress, segment.BroadcastAddress));
-#endif
-            ParallelOptions po = new ParallelOptions();
-            po.CancellationToken = cts.Token;
-            po.MaxDegreeOfParallelism = System.Environment.ProcessorCount;
-            try
-            {
-                Parallel.ForEach<IPAddress>(segment.Hosts(), po, (ip) =>
-            {
-                var mac = ip.GetMac();
-                //All Raspberry PI MAC address start with the same prefix
-                var spotted = mac.ToString().ToUpper().StartsWith("B8:27:EB");
-                if ((onlyPI && spotted) || !onlyPI)
-                    Console.WriteLine(string.Format("IP={0} MAC={1}{2}", ip, mac, spotted ? " <- Raspberry PI spotted !!!" : ""));
-                po.CancellationToken.ThrowIfCancellationRequested();
-            });
-            }
-            catch (OperationCanceledException e)
-            {
-#if DEBUG
-                Console.WriteLine(e.Message);
-#endif
-            }
         }
     }
 }

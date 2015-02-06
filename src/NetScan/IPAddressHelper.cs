@@ -1,8 +1,12 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Linq;
 
 namespace NetScan
 {
@@ -55,12 +59,16 @@ namespace NetScan
         }
         public static IPAddress GetLocalIP()
         {
-            var host = Dns.GetHostEntry(Dns.GetHostName());
-            var local = string.Empty;
-            foreach (var ip in host.AddressList)
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces().Where(o=>o.OperationalStatus==OperationalStatus.Up))
             {
-                if (ip.AddressFamily == AddressFamily.InterNetwork)
-                    return ip;
+                var prop = nic.GetIPProperties();
+                var address = prop.GatewayAddresses.FirstOrDefault();
+                if (address != null)
+                {
+                    var unicast = prop.UnicastAddresses.Where((o) => o.Address.AddressFamily == AddressFamily.InterNetwork).FirstOrDefault();
+                    if (unicast != null)
+                        return unicast.Address;
+                }
             }
             return null;
         }
@@ -91,6 +99,39 @@ namespace NetScan
         public static UInt32 ToUInt32(this IPAddress ip)
         {
             return BitConverter.ToUInt32(ip.GetAddressBytes(), 0);
+        }
+        public static void ScanMac(Action<IPAddress, string> callBack, CancellationToken ct, IPAddress paramIP = null)
+        {
+            if (callBack == null)
+                throw new ArgumentNullException(string.Format("Callback needed"));
+            var localIP = paramIP ?? IPAddressHelper.GetLocalIP();
+            if (localIP == null)
+                throw new Exception(string.Format("Can't find network adapter for IP {0}", paramIP));
+            var localMask = localIP.GetSubnetMask();
+            if (localMask == null)
+                throw new Exception(string.Format("Can't find subnet mask for IP {0}", localIP));
+            var localMac = localIP.GetMac();
+            Debug.WriteLine(string.Format("Local IP={0}, Mask={1}, Mac={2}", localIP.ToString(), localMask.ToString(), localMac));
+            var segment = new IPSegment(localIP, localMask);
+            Debug.WriteLine(string.Format("Number of IPs={0}, NetworkAddress={1}, Broardcast={2}", segment.NumberOfIPs, segment.NetworkAddress, segment.BroadcastAddress));
+            ParallelOptions po = new ParallelOptions();
+            po.CancellationToken = ct;
+            po.MaxDegreeOfParallelism = System.Environment.ProcessorCount;
+            try
+            {
+                Parallel.ForEach<IPAddress>(segment.Hosts(), po, (ip) =>
+                {
+                    var mac = ip.GetMac();
+                    if (mac.Length > 0)
+                        callBack.Invoke(ip, mac);
+                    if (po.CancellationToken != null)
+                        po.CancellationToken.ThrowIfCancellationRequested();
+                });
+            }
+            catch (OperationCanceledException e)
+            {
+                Debug.WriteLine(e.Message);
+            }
         }
     }
     public static class UInt16Helper
